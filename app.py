@@ -1,6 +1,6 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QTextBrowser, QSplitter, QTabWidget, QComboBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QTextBrowser, QSplitter, QTabWidget, QComboBox, QTreeWidgetItemIterator
 from PyQt5.QtCore import Qt
 import rdflib
 
@@ -217,8 +217,23 @@ class OntologyApp(QMainWindow):
         print(f"Clicked URI: {uri}")  # Debugging statement
         if uri in self.class_uri_map.values():
             self.display_class_info(uri)
+            self.expand_tree_item(self.tree, uri)
+            self.tabs.setCurrentWidget(self.tree)  # Switch to Ontology Classes tab
         elif uri in self.property_uri_map.values():
             self.display_property_info(uri)
+            self.expand_tree_item(self.object_properties_tree, uri)
+            self.tabs.setCurrentWidget(self.object_properties_tree)  # Switch to Object Properties tab
+    
+    def expand_tree_item(self, tree, uri):
+        iterator = QTreeWidgetItemIterator(tree)
+        while iterator.value():
+            item = iterator.value()
+            if item.text(0) == self.extract_last_part(uri):
+                tree.setCurrentItem(item)
+                item.setSelected(True)
+                tree.scrollToItem(item)
+                break
+            iterator += 1
     
     def extract_last_part(self, uri):
         return uri.split('/')[-1].split('#')[-1]
