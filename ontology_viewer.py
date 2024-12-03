@@ -1,96 +1,10 @@
 import os
-from PyQt5.QtWidgets import QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QTextBrowser, QSplitter, QTabWidget, QComboBox, QTreeWidgetItemIterator, QLineEdit, QLabel, QFormLayout
+from PyQt5.QtWidgets import QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QTextBrowser, QSplitter, QTabWidget, QComboBox, QTreeWidgetItemIterator, QLineEdit, QLabel
 from PyQt5.QtCore import Qt
 import rdflib
 from instance_editor import InstanceEditor
+from wizard_editor import WizardEditor
 from reasoning_engine import ReasoningEngine
-
-class WizardEditor(QWidget):
-    def __init__(self, ontology_viewer):
-        super().__init__()
-        self.ontology_viewer = ontology_viewer
-        self.selected_class = None
-        
-        self.layout = QFormLayout()
-        self.setLayout(self.layout)
-        
-        self.class_combo = QComboBox()
-        self.class_combo.currentIndexChanged.connect(self.on_class_selected)
-        self.property_combo = QComboBox()
-        self.property_combo.currentIndexChanged.connect(self.on_property_selected)
-        
-        self.instance_submit_button = QPushButton("Add Instance")
-        self.instance_submit_button.clicked.connect(self.add_instance)
-        
-        self.layout.addRow(QLabel("Select Class:"), self.class_combo)
-        self.layout.addRow(QLabel("Select Property:"), self.property_combo)
-        self.layout.addRow(self.instance_submit_button)
-    
-    def set_selected_class(self, class_uri):
-        self.selected_class = class_uri
-        self.update_properties()
-    
-    def update_properties(self):
-        self.property_combo.clear()
-        query = f"""
-        SELECT ?property WHERE {{
-            {{ ?property rdfs:domain <{self.selected_class}> . }}
-            UNION
-            {{ ?property rdfs:range <{self.selected_class}> . }}
-        }}
-        """
-        for row in self.ontology_viewer.graph.query(query):
-            property_uri = str(row[0])
-            property_short = self.ontology_viewer.extract_last_part(property_uri)
-            self.property_combo.addItem(property_short, property_uri)
-    
-    def on_class_selected(self):
-        self.property_combo.clear()
-        selected_class_uri = self.class_combo.currentData()
-        if selected_class_uri:
-            query = f"""
-            SELECT ?property WHERE {{
-                {{ ?property rdfs:domain <{selected_class_uri}> . }}
-                UNION
-                {{ ?property rdfs:range <{selected_class_uri}> . }}
-            }}
-            """
-            for row in self.ontology_viewer.graph.query(query):
-                property_uri = str(row[0])
-                property_short = self.ontology_viewer.extract_last_part(property_uri)
-                self.property_combo.addItem(property_short, property_uri)
-    
-    def on_property_selected(self):
-        self.class_combo.clear()
-        selected_property_uri = self.property_combo.currentData()
-        if selected_property_uri:
-            query = f"""
-            SELECT ?class WHERE {{
-                {{ <{selected_property_uri}> rdfs:domain ?class . }}
-                UNION
-                {{ <{selected_property_uri}> rdfs:range ?class . }}
-            }}
-            """
-            for row in self.ontology_viewer.graph.query(query):
-                class_uri = str(row[0])
-                class_short = self.ontology_viewer.extract_last_part(class_uri)
-                self.class_combo.addItem(class_short, class_uri)
-    
-    def add_instance(self):
-        if not self.selected_class:
-            print("No class selected")
-            return
-        
-        selected_property_uri = self.property_combo.currentData()
-        selected_class_uri = self.class_combo.currentData()
-        
-        if selected_property_uri and selected_class_uri:
-            instance = rdflib.URIRef(selected_property_uri)
-            self.ontology_viewer.graph.add((instance, rdflib.RDF.type, rdflib.URIRef(self.selected_class)))
-            self.ontology_viewer.graph.add((instance, rdflib.RDFS.label, rdflib.URIRef(selected_class_uri)))
-            print(f"Added instance: {selected_property_uri} of class {self.selected_class} with label {selected_class_uri}")
-            self.property_combo.clear()
-            self.class_combo.clear()
 
 class OntologyViewer(QMainWindow):
     def __init__(self):
@@ -173,6 +87,16 @@ class OntologyViewer(QMainWindow):
         self.load_preloaded_ontologies()
         
         self.reasoning_engine = ReasoningEngine(self.graph)
+        
+        self.reason_button = QPushButton("Apply Reasoning")
+        self.reason_button.clicked.connect(self.apply_reasoning)
+        layout.addWidget(self.reason_button)
+        
+    def apply_reasoning(self):
+        self.reasoning_engine.apply_reasoning()
+        self.visualize_ontology()
+        self.display_object_properties()
+        self.visualize_populated_ontology()
         
     def load_preloaded_ontologies(self):
         if not os.path.exists(self.preloaded_folder):
@@ -446,7 +370,7 @@ class OntologyViewer(QMainWindow):
             if search_text in instance_short.lower():
                 results.append((instance_short, instance_uri))
             
-                # Display results
+        # Display results
         if results:
             info_text = "<h2>Search Results:</h2>\n<ul>"
             for result_short, result_uri in results:
@@ -491,4 +415,3 @@ if __name__ == "__main__":
     window = OntologyViewer()
     window.show()
     sys.exit(app.exec_())
-        
