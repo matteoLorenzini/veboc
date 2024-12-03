@@ -1,6 +1,6 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QTextBrowser, QSplitter, QTabWidget, QComboBox, QTreeWidgetItemIterator
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QTextBrowser, QSplitter, QTabWidget, QComboBox, QTreeWidgetItemIterator, QFormLayout, QLineEdit, QLabel
 from PyQt5.QtCore import Qt
 import rdflib
 
@@ -11,6 +11,9 @@ class OntologyApp(QMainWindow):
         
         self.upload_button = QPushButton("Upload Ontology")
         self.upload_button.clicked.connect(self.upload_ontology)
+        
+        self.save_button = QPushButton("Save Ontology")
+        self.save_button.clicked.connect(self.save_ontology)
         
         self.preloaded_combo = QComboBox()
         self.preloaded_combo.addItem("Select Preloaded Ontology")
@@ -32,8 +35,25 @@ class OntologyApp(QMainWindow):
         self.tabs.addTab(self.tree, "Ontology Classes")
         self.tabs.addTab(self.object_properties_tree, "Object Properties")
         
+        self.instance_form = QWidget()
+        self.instance_form_layout = QFormLayout()
+        self.instance_form.setLayout(self.instance_form_layout)
+        self.tabs.addTab(self.instance_form, "Add Instance")
+        
+        self.instance_class_input = QLineEdit()
+        self.instance_uri_input = QLineEdit()
+        self.instance_label_input = QLineEdit()
+        self.instance_submit_button = QPushButton("Add Instance")
+        self.instance_submit_button.clicked.connect(self.add_instance)
+        
+        self.instance_form_layout.addRow(QLabel("Class URI:"), self.instance_class_input)
+        self.instance_form_layout.addRow(QLabel("Instance URI:"), self.instance_uri_input)
+        self.instance_form_layout.addRow(QLabel("Label:"), self.instance_label_input)
+        self.instance_form_layout.addRow(self.instance_submit_button)
+        
         layout = QVBoxLayout()
         layout.addWidget(self.upload_button)
+        layout.addWidget(self.save_button)
         layout.addWidget(self.preloaded_combo)
         layout.addWidget(self.tabs)
         
@@ -84,6 +104,12 @@ class OntologyApp(QMainWindow):
             self.load_ontology(file_path)
             self.visualize_ontology()
             self.display_object_properties()
+    
+    def save_ontology(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Ontology", "", "OWL files (*.owl);;RDF files (*.rdf)")
+        if file_path:
+            self.graph.serialize(destination=file_path, format='xml')
+            print(f"Ontology saved to {file_path}")
     
     def load_ontology(self, file_path):
         self.graph.parse(file_path)
@@ -237,6 +263,20 @@ class OntologyApp(QMainWindow):
     
     def extract_last_part(self, uri):
         return uri.split('/')[-1].split('#')[-1]
+    
+    def add_instance(self):
+        class_uri = self.instance_class_input.text()
+        instance_uri = self.instance_uri_input.text()
+        label = self.instance_label_input.text()
+        
+        if class_uri and instance_uri and label:
+            instance = rdflib.URIRef(instance_uri)
+            self.graph.add((instance, rdflib.RDF.type, rdflib.URIRef(class_uri)))
+            self.graph.add((instance, rdflib.RDFS.label, rdflib.Literal(label, lang="en")))
+            print(f"Added instance: {instance_uri} of class {class_uri} with label {label}")
+            self.instance_class_input.clear()
+            self.instance_uri_input.clear()
+            self.instance_label_input.clear()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
