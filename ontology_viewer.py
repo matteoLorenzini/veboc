@@ -29,9 +29,12 @@ class OntologyViewer(QMainWindow):
         self.tree.setHeaderLabel("Ontology Classes")
         self.tree.itemClicked.connect(self.on_class_item_clicked)
         
+        self.object_properties_wizard_tree = QTreeWidget()
+        self.object_properties_wizard_tree.setHeaderLabel("Object Properties Wizard")
+        self.object_properties_wizard_tree.itemClicked.connect(self.on_property_item_clicked)
+        
         self.object_properties_tree = QTreeWidget()
         self.object_properties_tree.setHeaderLabel("Object Properties")
-        self.object_properties_tree.itemClicked.connect(self.on_property_item_clicked)
         
         self.populated_tree = QTreeWidget()
         self.populated_tree.setHeaderLabel("Populated Ontology")
@@ -43,6 +46,7 @@ class OntologyViewer(QMainWindow):
         
         self.tabs = QTabWidget()
         self.tabs.addTab(self.tree, "Ontology Classes")
+        self.tabs.addTab(self.object_properties_wizard_tree, "Object Properties Wizard")
         self.tabs.addTab(self.object_properties_tree, "Object Properties")
         self.tabs.addTab(self.populated_tree, "Populated Ontology")
         
@@ -91,6 +95,8 @@ class OntologyViewer(QMainWindow):
         self.reason_button = QPushButton("Apply Reasoning")
         self.reason_button.clicked.connect(self.apply_reasoning)
         layout.addWidget(self.reason_button)
+
+        self.display_all_properties()
         
     def apply_reasoning(self):
         self.reasoning_engine.apply_reasoning()
@@ -190,6 +196,45 @@ class OntologyViewer(QMainWindow):
         for property, (label, domain, range_) in property_hierarchy.items():
             property_item = QTreeWidgetItem([property])
             self.object_properties_tree.addTopLevelItem(property_item)
+
+    def display_all_properties(self):
+        self.object_properties_tree.clear()
+        self.property_uri_map.clear()
+        query = """
+        SELECT ?property ?label ?domain ?range WHERE {
+            ?property a owl:ObjectProperty .
+            OPTIONAL { ?property rdfs:label ?label . }
+            OPTIONAL { ?property rdfs:domain ?domain . }
+            OPTIONAL { ?property rdfs:range ?range . }
+            FILTER (lang(?label) = 'en' || lang(?label) = '')
+        }
+        """
+        property_hierarchy = {}
+        for row in self.graph.query(query):
+            property = str(row[0])
+            label = str(row[1]) if row[1] else ""
+            domain = str(row[2]) if row[2] else ""
+            range_ = str(row[3]) if row[3] else ""
+            property_short = self.extract_last_part(property)
+            self.property_uri_map[property_short] = property
+            self.property_uri_map[property] = property  # Add full URI to map
+            property_hierarchy[property_short] = (label, domain, range_)
+        
+        for property, (label, domain, range_) in property_hierarchy.items():
+            property_item = QTreeWidgetItem([property])
+            self.object_properties_tree.addTopLevelItem(property_item)
+            
+            if domain:
+                domain_item = QTreeWidgetItem([f"Domain: {self.extract_last_part(domain)}"])
+                property_item.addChild(domain_item)
+            
+            if range_:
+                range_item = QTreeWidgetItem([f"Range: {self.extract_last_part(range_)}"])
+                property_item.addChild(range_item)
+            
+            if label:
+                label_item = QTreeWidgetItem([f"Label: {label}"])
+                property_item.addChild(label_item)
     
     def visualize_populated_ontology(self):
         self.populated_tree.clear()
@@ -267,6 +312,35 @@ class OntologyViewer(QMainWindow):
             if value in self.class_uri_map.values() or value in self.property_uri_map.values():
                 value_short = f"<a href='{value}'>{value_short}</a>"
             info_text += f"<p><strong>{property_short}:</strong> {value_short}</p>\n"
+        
+        # Adding Domain and Range Properties
+        domain_range_query = f"""
+        SELECT ?property ?label ?domain ?range WHERE {{
+            {{ ?property rdfs:domain <{selected_class}> . }}
+            UNION
+            {{ ?property rdfs:range <{selected_class}> . }}
+            OPTIONAL {{ ?property rdfs:label ?label . }}
+            OPTIONAL {{ ?property rdfs:domain ?domain . }}
+            OPTIONAL {{ ?property rdfs:range ?range . }}
+            FILTER (lang(?label) = 'en' || lang(?label) = '')
+        }}
+        """
+        info_text += "<h3>Domain and Range Properties:</h3>\n"
+        for row in self.graph.query(domain_range_query):
+            property = str(row[0])
+            label = str(row[1]) if row[1] else ""
+            domain = str(row[2]) if row[2] else ""
+            range_ = str(row[3]) if row[3] else ""
+            property_short = self.extract_last_part(property)
+            if domain:
+                domain_short = self.extract_last_part(domain)
+                info_text += f"<p><strong>Domain:</strong> {domain_short}</p>\n"
+            if range_:
+                range_short = self.extract_last_part(range_)
+                info_text += f"<p><strong>Range:</strong> {range_short}</p>\n"
+            if label:
+                info_text += f"<p><strong>Label:</strong> {label}</p>\n"
+
         self.info.setHtml(info_text)
     
     def on_property_item_clicked(self, item, column):
@@ -439,6 +513,47 @@ class OntologyViewer(QMainWindow):
         for property, (label, domain, range_) in property_hierarchy.items():
             property_item = QTreeWidgetItem([property])
             self.object_properties_tree.addTopLevelItem(property_item)
+            
+            if domain:
+                domain_item = QTreeWidgetItem([f"Domain: {self.extract_last_part(domain)}"])
+                property_item.addChild(domain_item)
+            
+            if range_:
+                range_item = QTreeWidgetItem([f"Range: {self.extract_last_part(range_)}"])
+                property_item.addChild(range_item)
+            
+            if label:
+                label_item = QTreeWidgetItem([f"Label: {label}"])
+                property_item.addChild(label_item)
+    
+    def display_properties_for_selected_class(self, selected_class):
+        self.object_properties_wizard_tree.clear()
+        self.property_uri_map.clear()
+        query = f"""
+        SELECT ?property ?label ?domain ?range WHERE {{
+            {{ ?property rdfs:domain <{selected_class}> . }}
+            UNION
+            {{ ?property rdfs:range <{selected_class}> . }}
+            OPTIONAL {{ ?property rdfs:label ?label . }}
+            OPTIONAL {{ ?property rdfs:domain ?domain . }}
+            OPTIONAL {{ ?property rdfs:range ?range . }}
+            FILTER (lang(?label) = 'en' || lang(?label) = '')
+        }}
+        """
+        property_hierarchy = {}
+        for row in self.graph.query(query):
+            property = str(row[0])
+            label = str(row[1]) if row[1] else ""
+            domain = str(row[2]) if row[2] else ""
+            range_ = str(row[3]) if row[3] else ""
+            property_short = self.extract_last_part(property)
+            self.property_uri_map[property_short] = property
+            self.property_uri_map[property] = property  # Add full URI to map
+            property_hierarchy[property_short] = (label, domain, range_)
+        
+        for property, (label, domain, range_) in property_hierarchy.items():
+            property_item = QTreeWidgetItem([property])
+            self.object_properties_wizard_tree.addTopLevelItem(property_item)
             
             if domain:
                 domain_item = QTreeWidgetItem([f"Domain: {self.extract_last_part(domain)}"])
