@@ -246,6 +246,7 @@ class OntologyViewer(QMainWindow):
             self.display_class_info(selected_class)
             self.instance_editor.set_selected_class(selected_class)
             self.wizard_editor.set_selected_class(selected_class)
+            self.display_properties_for_selected_class(selected_class)  # New line to display properties
         else:
             print(f"Error: {selected_class_short} not found in class_uri_map")  # Debugging statement
     
@@ -409,6 +410,47 @@ class OntologyViewer(QMainWindow):
     
     def extract_last_part(self, uri):
         return uri.split('/')[-1].split('#')[-1]
+    
+    def display_properties_for_selected_class(self, selected_class):
+        self.object_properties_tree.clear()
+        self.property_uri_map.clear()
+        query = f"""
+        SELECT ?property ?label ?domain ?range WHERE {{
+            {{ ?property rdfs:domain <{selected_class}> . }}
+            UNION
+            {{ ?property rdfs:range <{selected_class}> . }}
+            OPTIONAL {{ ?property rdfs:label ?label . }}
+            OPTIONAL {{ ?property rdfs:domain ?domain . }}
+            OPTIONAL {{ ?property rdfs:range ?range . }}
+            FILTER (lang(?label) = 'en' || lang(?label) = '')
+        }}
+        """
+        property_hierarchy = {}
+        for row in self.graph.query(query):
+            property = str(row[0])
+            label = str(row[1]) if row[1] else ""
+            domain = str(row[2]) if row[2] else ""
+            range_ = str(row[3]) if row[3] else ""
+            property_short = self.extract_last_part(property)
+            self.property_uri_map[property_short] = property
+            self.property_uri_map[property] = property  # Add full URI to map
+            property_hierarchy[property_short] = (label, domain, range_)
+        
+        for property, (label, domain, range_) in property_hierarchy.items():
+            property_item = QTreeWidgetItem([property])
+            self.object_properties_tree.addTopLevelItem(property_item)
+            
+            if domain:
+                domain_item = QTreeWidgetItem([f"Domain: {self.extract_last_part(domain)}"])
+                property_item.addChild(domain_item)
+            
+            if range_:
+                range_item = QTreeWidgetItem([f"Range: {self.extract_last_part(range_)}"])
+                property_item.addChild(range_item)
+            
+            if label:
+                label_item = QTreeWidgetItem([f"Label: {label}"])
+                property_item.addChild(label_item)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
