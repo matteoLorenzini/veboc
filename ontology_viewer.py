@@ -35,6 +35,7 @@ class OntologyViewer(QMainWindow):
         
         self.object_properties_tree = QTreeWidget()
         self.object_properties_tree.setHeaderLabel("Object Properties")
+        self.object_properties_tree.itemClicked.connect(self.on_property_item_clicked)
         
         self.populated_tree = QTreeWidget()
         self.populated_tree.setHeaderLabel("Populated Ontology")
