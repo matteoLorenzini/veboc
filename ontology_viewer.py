@@ -46,15 +46,14 @@ class OntologyViewer(QMainWindow):
         
         self.tabs = QTabWidget()
         self.tabs.addTab(self.tree, "Ontology Classes")
-        self.tabs.addTab(self.object_properties_wizard_tree, "Object Properties Wizard")
         self.tabs.addTab(self.object_properties_tree, "Object Properties")
-        self.tabs.addTab(self.populated_tree, "Populated Ontology")
-        
+        self.tabs.addTab(self.object_properties_wizard_tree, "Object Properties Wizard")
         self.instance_editor = InstanceEditor(self)
-        self.tabs.addTab(self.instance_editor, "Instance Editor")
-        
         self.wizard_editor = WizardEditor(self)
         self.tabs.addTab(self.wizard_editor, "Wizard Editor")
+        self.tabs.addTab(self.instance_editor, "Instance Editor")
+        self.tabs.addTab(self.populated_tree, "Populated Ontology")
+        
         
         layout = QVBoxLayout()
         layout.addWidget(self.upload_button)
