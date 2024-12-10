@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QFormLayout, QComboBox, QPushButton, QLabel
+from PyQt5.QtWidgets import QWidget, QFormLayout, QComboBox, QPushButton, QLabel, QLineEdit
 import rdflib
 
 class WizardEditor(QWidget):
@@ -6,6 +6,7 @@ class WizardEditor(QWidget):
         super().__init__()
         self.ontology_viewer = ontology_viewer
         self.selected_class = None
+        self.property_class_pairs = []
         
         self.layout = QFormLayout()
         self.setLayout(self.layout)
@@ -18,8 +19,13 @@ class WizardEditor(QWidget):
         self.instance_submit_button = QPushButton("Add Instance")
         self.instance_submit_button.clicked.connect(self.add_instance)
         
+        self.instance_uri_input = QLineEdit()
+        self.instance_label_input = QLineEdit()
+        
         self.layout.addRow(QLabel("Select Class:"), self.class_combo)
         self.layout.addRow(QLabel("Select Property:"), self.property_combo)
+        self.layout.addRow(QLabel("Instance URI:"), self.instance_uri_input)
+        self.layout.addRow(QLabel("Instance Label:"), self.instance_label_input)
         self.layout.addRow(self.instance_submit_button)
     
     def set_selected_class(self, class_uri):
@@ -32,6 +38,13 @@ class WizardEditor(QWidget):
         query = f"""
         SELECT ?property WHERE {{
             {{ ?property rdfs:domain <{self.selected_class}> }} UNION {{ ?property rdfs:range <{self.selected_class}> }}
+            UNION {{
+                ?superclass rdfs:subClassOf <{self.selected_class}> .
+                ?property rdfs:domain ?superclass
+            }} UNION {{
+                ?superclass rdfs:subClassOf <{self.selected_class}> .
+                ?property rdfs:range ?superclass
+            }}
         }}
         """
         self.execute_query(query, self.property_combo)
@@ -39,47 +52,77 @@ class WizardEditor(QWidget):
     
     def on_class_selected(self):
         print("on_class_selected triggered")
-        self.property_combo.blockSignals(True)
-        self.property_combo.clear()
         selected_class_uri = self.class_combo.currentData()
         if selected_class_uri:
-            query = f"""
-            SELECT ?property WHERE {{
-                {{ ?property rdfs:domain <{selected_class_uri}> }} UNION {{ ?property rdfs:range <{selected_class_uri}> }}
-            }}
-            """
-            self.execute_query(query, self.property_combo)
-        self.property_combo.blockSignals(False)
+            self.set_selected_class(selected_class_uri)
     
     def on_property_selected(self):
         print("on_property_selected triggered")
-        self.class_combo.blockSignals(True)
-        self.class_combo.clear()
         selected_property_uri = self.property_combo.currentData()
         if selected_property_uri:
+            new_class_combo = QComboBox()
+            new_class_combo.currentIndexChanged.connect(self.on_class_selected_for_property)
+            self.layout.addRow(QLabel("Select Class for Property:"), new_class_combo)
+            self.property_class_pairs.append((selected_property_uri, new_class_combo))
+            
             query = f"""
             SELECT ?class WHERE {{
                 {{ <{selected_property_uri}> rdfs:domain ?class }} UNION {{ <{selected_property_uri}> rdfs:range ?class }}
             }}
             """
-            self.execute_query(query, self.class_combo)
-        self.class_combo.blockSignals(False)
+            self.execute_query(query, new_class_combo)
+    
+    def on_class_selected_for_property(self):
+        print("on_class_selected_for_property triggered")
+        selected_class_uri = self.sender().currentData()
+        if selected_class_uri:
+            new_property_combo = QComboBox()
+            self.layout.addRow(QLabel("Select Property for Class:"), new_property_combo)
+            self.property_class_pairs.append((selected_class_uri, new_property_combo))
+            
+            query = f"""
+            SELECT ?property WHERE {{
+                {{ ?property rdfs:domain <{selected_class_uri}> }} UNION {{ ?property rdfs:range <{selected_class_uri}> }}
+                UNION {{
+                    ?superclass rdfs:subClassOf <{selected_class_uri}> .
+                    ?property rdfs:domain ?superclass
+                }} UNION {{
+                    ?superclass rdfs:subClassOf <{selected_class_uri}> .
+                    ?property rdfs:range ?superclass
+                }}
+            }}
+            """
+            self.execute_query(query, new_property_combo)
     
     def add_instance(self):
         if not self.selected_class:
             print("No class selected")
             return
         
-        selected_property_uri = self.property_combo.currentData()
-        selected_class_uri = self.class_combo.currentData()
+        instance_uri = self.instance_uri_input.text().strip()
+        instance_label = self.instance_label_input.text().strip()
         
-        if selected_property_uri and selected_class_uri:
-            instance = rdflib.URIRef(selected_property_uri)
+        if instance_uri and instance_label:
+            instance = rdflib.URIRef(instance_uri)
             self.ontology_viewer.graph.add((instance, rdflib.RDF.type, rdflib.URIRef(self.selected_class)))
-            self.ontology_viewer.graph.add((instance, rdflib.RDFS.label, rdflib.URIRef(selected_class_uri)))
-            print(f"Added instance: {selected_property_uri} of class {self.selected_class} with label {selected_class_uri}")
-            self.property_combo.clear()
-            self.class_combo.clear()
+            self.ontology_viewer.graph.add((instance, rdflib.RDFS.label, rdflib.Literal(instance_label)))
+            
+            for prop_uri, class_combo in self.property_class_pairs:
+                selected_class_uri = class_combo.currentData()
+                if selected_class_uri:
+                    self.ontology_viewer.graph.add((instance, rdflib.URIRef(prop_uri), rdflib.URIRef(selected_class_uri)))
+            
+            print(f"Added instance: {instance_uri} of class {self.selected_class} with label {instance_label}")
+            self.clear_inputs()
+    
+    def clear_inputs(self):
+        self.property_combo.clear()
+        self.class_combo.clear()
+        self.instance_uri_input.clear()
+        self.instance_label_input.clear()
+        for _, class_combo in self.property_class_pairs:
+            class_combo.clear()
+        self.property_class_pairs.clear()
     
     def execute_query(self, query, combo_box):
         print(f"Executing query: {query}")
